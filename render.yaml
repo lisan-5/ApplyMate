@@ -19,7 +19,7 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
-    disks:
-      - name: applymate-data
-        mountPath: /var/data
-        sizeGB: 1
+    disk:
+      name: applymate-data
+      mountPath: /var/data
+      sizeGB: 1
