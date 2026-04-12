@@ -217,24 +217,6 @@ export default function AdminDashboard() {
     setUserScholarships(data || []);
   };
 
-  const toggleRole = async (userId: string, currentRole: string) => {
-    if (currentRole === "admin") {
-      await api
-        .from("user_roles")
-        .update({ role: "user" })
-        .eq("user_id", userId);
-    } else {
-      await api
-        .from("user_roles")
-        .update({ role: "admin" })
-        .eq("user_id", userId);
-    }
-    toast({
-      title: `Role updated to ${currentRole === "admin" ? "user" : "admin"}`,
-    });
-    fetchAll();
-  };
-
   const updateScholarshipStatus = async (
     id: string,
     status: ScholarshipStatus,
@@ -460,21 +442,6 @@ export default function AdminDashboard() {
                                 onClick={() => viewUserDetail(u)}
                               >
                                 <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() =>
-                                  toggleRole(u.user_id, u.role || "user")
-                                }
-                                title={
-                                  u.role === "admin"
-                                    ? "Demote to user"
-                                    : "Promote to admin"
-                                }
-                              >
-                                <Shield className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </TableCell>

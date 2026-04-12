@@ -53,6 +53,8 @@ ALLOWED_ORIGINS = {
     for origin in os.environ.get("APPLYMATE_ALLOWED_ORIGINS", "*").split(",")
     if origin.strip()
 }
+BOOTSTRAP_ADMIN_KEY = "bootstrap_admin_user_id"
+SIGNUP_ADMIN_LOCK_ID = 108381331
 
 TABLE_COLUMNS = {
     "profiles": {"id", "user_id", "display_name", "avatar_url", "bio", "skills", "education", "experience", "achievements", "interests", "gpa", "major", "education_level", "cv_raw_text", "activity_streak", "monthly_goal", "quick_notes", "last_active_at", "created_at", "updated_at"},
@@ -243,6 +245,60 @@ def has_role(user_id, role):
         db.close()
 
 
+def get_bootstrap_admin_user_id(db=None):
+    owns_connection = db is None
+    db = db or conn()
+    try:
+        row = db.execute("SELECT value FROM app_settings WHERE key = ?", (BOOTSTRAP_ADMIN_KEY,)).fetchone()
+        return row["value"] if row else None
+    finally:
+        if owns_connection:
+            db.close()
+
+
+def sync_bootstrap_admin(db):
+    admin_id = get_bootstrap_admin_user_id(db)
+    if not admin_id:
+        existing_admin = db.execute(
+            """
+            SELECT ur.user_id
+            FROM user_roles ur
+            JOIN users u ON u.id = ur.user_id
+            WHERE ur.role = 'admin'
+            ORDER BY u.created_at ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        if existing_admin:
+            admin_id = existing_admin["user_id"]
+        else:
+            first_user = db.execute("SELECT id FROM users ORDER BY created_at ASC LIMIT 1").fetchone()
+            admin_id = first_user["id"] if first_user else None
+        if admin_id:
+            db.execute(
+                """
+                INSERT INTO app_settings (key, value)
+                VALUES (?, ?)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                """,
+                (BOOTSTRAP_ADMIN_KEY, admin_id),
+            )
+
+    if not admin_id:
+        return
+
+    db.execute("DELETE FROM user_roles WHERE role = 'admin' AND user_id <> ?", (admin_id,))
+    admin_exists = db.execute(
+        "SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'admin' LIMIT 1",
+        (admin_id,),
+    ).fetchone()
+    if not admin_exists:
+        db.execute(
+            "INSERT INTO user_roles (id, user_id, role) VALUES (?, ?, 'admin')",
+            (str(uuid.uuid4()), admin_id),
+        )
+
+
 def ensure_schema():
     db = conn()
     db.executescript(
@@ -250,6 +306,7 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, user_id TEXT UNIQUE NOT NULL, display_name TEXT, avatar_url TEXT, bio TEXT, skills TEXT DEFAULT '[]', education TEXT DEFAULT '[]', experience TEXT DEFAULT '[]', achievements TEXT DEFAULT '[]', interests TEXT DEFAULT '[]', gpa TEXT, major TEXT, education_level TEXT, cv_raw_text TEXT, activity_streak INTEGER DEFAULT 0, monthly_goal INTEGER DEFAULT 5, quick_notes TEXT DEFAULT '', last_active_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, role TEXT NOT NULL, UNIQUE(user_id, role), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS scholarships (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, amount DOUBLE PRECISION, deadline TEXT, link TEXT, status TEXT NOT NULL DEFAULT 'saved', eligibility_notes TEXT, tags TEXT DEFAULT '[]', notes TEXT, share_token TEXT UNIQUE, is_shared INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, position INTEGER DEFAULT 0, is_favorited INTEGER DEFAULT 0, application_type TEXT NOT NULL DEFAULT 'scholarship', FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS shared_scholarships (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, shared_by TEXT NOT NULL, shared_with TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS scholarship_files (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, user_id TEXT NOT NULL, file_name TEXT NOT NULL, file_path TEXT NOT NULL, file_size INTEGER, mime_type TEXT, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
@@ -257,6 +314,14 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS community_replies (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, user_email TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(post_id) REFERENCES community_posts(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS application_checklist (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, user_id TEXT NOT NULL, label TEXT NOT NULL, is_done INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS ai_results_cache (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, scholarship_id TEXT, result_type TEXT NOT NULL, result_data TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(user_id, scholarship_id, result_type));
+        """
+    )
+    sync_bootstrap_admin(db)
+    db.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS user_roles_single_admin_idx
+        ON user_roles ((role))
+        WHERE role = 'admin'
         """
     )
     db.commit()
@@ -268,10 +333,21 @@ def create_user(email, password):
     timestamp = now()
     db = conn()
     try:
-        first_user = db.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0
+        db.execute("SELECT pg_advisory_xact_lock(?)", (SIGNUP_ADMIN_LOCK_ID,))
+        bootstrap_admin_id = get_bootstrap_admin_user_id(db)
         db.execute("INSERT INTO users (id, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", (user["id"], user["email"], hash_password(password), timestamp, timestamp))
         db.execute("INSERT INTO profiles (id, user_id, display_name, skills, education, experience, achievements, interests, activity_streak, monthly_goal, quick_notes, created_at, updated_at) VALUES (?, ?, ?, '[]', '[]', '[]', '[]', '[]', 0, 5, '', ?, ?)", (str(uuid.uuid4()), user["id"], user["email"].split("@", 1)[0], timestamp, timestamp))
-        db.execute("INSERT INTO user_roles (id, user_id, role) VALUES (?, ?, ?)", (str(uuid.uuid4()), user["id"], "admin" if first_user else "user"))
+        role = "admin" if not bootstrap_admin_id else "user"
+        db.execute("INSERT INTO user_roles (id, user_id, role) VALUES (?, ?, ?)", (str(uuid.uuid4()), user["id"], role))
+        if role == "admin":
+            db.execute(
+                """
+                INSERT INTO app_settings (key, value)
+                VALUES (?, ?)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                """,
+                (BOOTSTRAP_ADMIN_KEY, user["id"]),
+            )
         db.commit()
     finally:
         db.close()
@@ -323,8 +399,8 @@ def check_access(table, operation, user, values, filters):
     if table == "user_roles":
         if not user:
             raise PermissionError("Unauthorized")
-        if operation != "select" and not has_role(user["id"], "admin"):
-            raise PermissionError("Admin access required")
+        if operation != "select":
+            raise PermissionError("User roles are fixed after initial setup")
         return
     if not user:
         raise PermissionError("Unauthorized")
