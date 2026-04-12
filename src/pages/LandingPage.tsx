@@ -8,7 +8,6 @@ import {
   Brain,
   Users,
   Sparkles,
-  CheckCircle2,
 } from "lucide-react";
 import { ApplyMateLogo } from "@/components/ApplyMateLogo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -57,10 +56,10 @@ const capabilityCards = [
   },
 ];
 
-const heroHighlights = [
-  "Smart deadline calendar",
-  "Auto scholarship parsing",
-  "Essay and profile support",
+const heroMetrics = [
+  { label: "Students tracking", value: "2.5k+" },
+  { label: "Deadlines managed", value: "18k+" },
+  { label: "Applications shared", value: "9k+" },
 ];
 
 export default function LandingPage() {
@@ -77,14 +76,12 @@ export default function LandingPage() {
 
   return (
     <div className="page-shell min-h-screen bg-background overflow-x-hidden selection:bg-primary/30 selection:text-primary-foreground">
-      {/* Ambient glow orbs */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="animate-soft-float absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[hsl(var(--gradient-start)/0.08)] blur-[120px]" />
         <div className="animate-soft-float-delayed absolute top-[30%] right-[-15%] w-[500px] h-[500px] rounded-full bg-[hsl(var(--gradient-end)/0.06)] blur-[120px]" />
         <div className="animate-soft-float absolute bottom-[-10%] left-[30%] w-[400px] h-[400px] rounded-full bg-[hsl(var(--gradient-accent)/0.05)] blur-[120px]" />
       </div>
 
-      {/* Nav */}
       <nav className="animate-fade-rise fixed top-0 left-0 right-0 z-50 bg-background/50 backdrop-blur-2xl border-b border-border/40">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-5 sm:px-8 h-16">
           <div className="flex items-center gap-2">
@@ -108,12 +105,10 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero */}
       <motion.section
         style={{ scale: heroScale, opacity: heroOpacity }}
         className="relative pt-32 sm:pt-44 pb-20 sm:pb-28 px-5 sm:px-8"
       >
-        {/* Background grid */}
         <div
           className="absolute inset-0 opacity-[0.05]"
           style={{
@@ -122,9 +117,8 @@ export default function LandingPage() {
           }}
         />
 
-        <div className="max-w-7xl mx-auto relative">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-end">
-            <div className="lg:col-span-7">
+        <div className="max-w-5xl mx-auto relative">
+          <div className="max-w-3xl">
               <motion.div
                 initial="hidden"
                 animate="visible"
@@ -143,7 +137,7 @@ export default function LandingPage() {
                 animate="visible"
                 custom={1}
                 variants={fadeUp}
-                className="text-[clamp(2.9rem,8vw,7rem)] font-bold leading-[0.86] tracking-[-0.03em]"
+                className="text-[clamp(3.1rem,8vw,7.4rem)] font-bold leading-[0.84] tracking-[-0.05em]"
               >
                 <span className="gradient-text">Track.</span>
                 <br />
@@ -164,74 +158,47 @@ export default function LandingPage() {
                 A modern scholarship workspace that keeps applications clear,
                 deadlines visible, and your progress moving every day.
               </motion.p>
-            </div>
 
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={3}
-              variants={fadeUp}
-              className="lg:col-span-5"
-            >
-              <div className="animate-shimmer glass-card rounded-3xl p-6 sm:p-7 space-y-6 border border-border/60">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-primary/70 font-semibold mb-2">
-                    Built For Clarity
-                  </p>
-                  <p className="text-sm sm:text-[15px] leading-relaxed text-foreground/80">
-                    From first draft to final submission, ApplyMate keeps each
-                    step readable and manageable so you can focus on winning.
-                  </p>
-                </div>
-
-                <ul className="space-y-2.5">
-                  {heroHighlights.map((item) => (
-                    <li
-                      key={item}
-                      className="flex items-center gap-2.5 text-sm text-foreground/85"
-                    >
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-
-                <Link to="/auth" className="block">
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                custom={3}
+                variants={fadeUp}
+                className="mt-8"
+              >
+                <Link to="/auth">
                   <Button
                     size="lg"
-                    className="w-full rounded-full h-12 px-10 text-sm font-semibold group gradient-primary border-0 text-white glow shadow-2xl"
+                    className="rounded-full h-12 px-8 text-sm font-semibold group gradient-primary border-0 text-white glow shadow-2xl"
                   >
                     Get Started Free
                     <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </Link>
-              </div>
-            </motion.div>
-          </div>
+              </motion.div>
 
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            custom={4}
-            variants={fadeUp}
-            className="mt-10 sm:mt-12 grid grid-cols-1 sm:grid-cols-3 gap-3"
-          >
-            {[
-              { label: "Students tracking", value: "2.5k+" },
-              { label: "Deadlines managed", value: "18k+" },
-              { label: "Applications shared", value: "9k+" },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="glass rounded-2xl px-5 py-4 border border-border/60"
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                custom={4}
+                variants={fadeUp}
+                className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3"
               >
-                <p className="text-2xl font-bold gradient-text">{item.value}</p>
-                <p className="text-xs uppercase tracking-[0.16em] text-foreground/55 mt-1">
-                  {item.label}
-                </p>
-              </div>
-            ))}
-          </motion.div>
+                {heroMetrics.map((item) => (
+                  <div
+                    key={item.label}
+                    className="glass rounded-2xl px-5 py-4 border border-border/60"
+                  >
+                    <p className="text-2xl font-bold gradient-text">
+                      {item.value}
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.16em] text-foreground/55 mt-1">
+                      {item.label}
+                    </p>
+                  </div>
+                ))}
+              </motion.div>
+          </div>
         </div>
 
         <motion.div
@@ -246,7 +213,6 @@ export default function LandingPage() {
         />
       </motion.section>
 
-      {/* Capabilities */}
       <section className="py-20 sm:py-28 px-5 sm:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-10 sm:mb-12">
@@ -298,7 +264,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Community preview */}
       <section className="py-20 sm:py-28 px-5 sm:px-8 border-t border-border/30 relative">
         <div className="absolute inset-0 mesh-gradient pointer-events-none" />
         <div className="max-w-5xl mx-auto relative">
@@ -374,7 +339,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-24 sm:py-36 px-5 sm:px-8 relative overflow-hidden">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
@@ -399,10 +363,10 @@ export default function LandingPage() {
             </span>
           </div>
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter mb-6 leading-[0.95]">
-            Stop losing
+            Build a calmer
             <br />
             <span className="font-serif-display italic font-normal gradient-text">
-              scholarships.
+              application process.
             </span>
           </h2>
           <p className="text-base text-foreground/72 mb-10 max-w-md mx-auto leading-relaxed">
@@ -420,7 +384,6 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t border-border/30 py-6 px-5 sm:px-8">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -430,12 +393,10 @@ export default function LandingPage() {
             </span>
           </div>
           <p className="text-[10px] text-muted-foreground tracking-wider">
-            © {new Date().getFullYear()} ALL RIGHTS RESERVED
+            Copyright {new Date().getFullYear()} ALL RIGHTS RESERVED
           </p>
         </div>
       </footer>
     </div>
   );
 }
-
-
