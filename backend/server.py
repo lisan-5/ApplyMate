@@ -8,12 +8,10 @@ import json
 import os
 import re
 import secrets
-import smtplib
 import time
 import traceback
 import uuid
 from datetime import datetime, timezone
-from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -51,11 +49,8 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "scholarship-files")
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").replace(" ", "")
-SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", SMTP_USER)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
 ALLOWED_ORIGINS = {
     origin.strip()
     for origin in os.environ.get("APPLYMATE_ALLOWED_ORIGINS", "*").split(",")
@@ -112,8 +107,8 @@ def require_supabase_storage():
 
 
 def require_email():
-    if not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM_EMAIL:
-        raise ValueError("SMTP email settings are not configured")
+    if not RESEND_API_KEY or not EMAIL_FROM:
+        raise ValueError("RESEND_API_KEY and EMAIL_FROM are required for email delivery")
 
 
 def pg_sql(sql):
@@ -214,15 +209,34 @@ def generate_code():
 
 def send_email(to_email, subject, body):
     require_email()
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = SMTP_FROM_EMAIL
-    message["To"] = to_email
-    message.set_content(body)
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.send_message(message)
+    payload = {
+        "from": EMAIL_FROM,
+        "to": [to_email],
+        "subject": subject,
+        "text": body,
+    }
+    req = urlrequest.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "applymate-backend/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=30) as response:
+            raw = response.read().decode("utf-8", errors="ignore")
+            return json.loads(raw) if raw else {}
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        try:
+            parsed = json.loads(detail)
+            message = parsed.get("message") or parsed.get("error", {}).get("message") or detail
+        except Exception:
+            message = detail or str(exc)
+        raise ValueError(f"Resend email failed: {message}") from exc
 
 
 def b64(data):
