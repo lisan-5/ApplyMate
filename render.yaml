@@ -7,6 +7,8 @@ services:
     startCommand: python backend/server.py
     healthCheckPath: /api/health
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
       - key: APPLYMATE_HOST
         value: 0.0.0.0
       - key: APPLYMATE_ALLOWED_ORIGINS
