@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: applymate-backend
+    runtime: python
+    plan: starter
+    buildCommand: python -m py_compile backend/server.py
+    startCommand: python backend/server.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: APPLYMATE_HOST
+        value: 0.0.0.0
+      - key: APPLYMATE_DATA_DIR
+        value: /var/data/applymate
+      - key: APPLYMATE_ALLOWED_ORIGINS
+        sync: false
+      - key: APPLYMATE_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+    disks:
+      - name: applymate-data
+        mountPath: /var/data
+        sizeGB: 1
