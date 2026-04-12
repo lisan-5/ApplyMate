@@ -3,14 +3,12 @@ services:
     name: applymate-backend
     runtime: python
     plan: starter
-    buildCommand: python -m py_compile backend/server.py
+    buildCommand: pip install -r requirements.txt && python -m py_compile backend/server.py
     startCommand: python backend/server.py
     healthCheckPath: /api/health
     envVars:
       - key: APPLYMATE_HOST
         value: 0.0.0.0
-      - key: APPLYMATE_DATA_DIR
-        value: /var/data/applymate
       - key: APPLYMATE_ALLOWED_ORIGINS
         sync: false
       - key: APPLYMATE_SECRET
@@ -19,7 +17,11 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
-    disk:
-      name: applymate-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: scholarship-files

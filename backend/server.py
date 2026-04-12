@@ -8,15 +8,18 @@ import json
 import os
 import re
 import secrets
-import sqlite3
 import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
+from urllib.parse import quote
 from urllib.parse import parse_qs, urlparse
+from psycopg import IntegrityError, connect
+from psycopg.rows import dict_row
+
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
@@ -35,27 +38,21 @@ def load_env_file():
 
 load_env_file()
 
-DATA_ROOT = Path(os.environ.get("APPLYMATE_DATA_DIR", str(ROOT)))
-DB_PATH = Path(
-    os.environ.get("APPLYMATE_DB_PATH", str(DATA_ROOT / "data" / "applymate.db"))
-)
-UPLOAD_ROOT = Path(
-    os.environ.get("APPLYMATE_UPLOAD_DIR", str(DATA_ROOT / "uploads"))
-)
 HOST = os.environ.get("APPLYMATE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT") or os.environ.get("APPLYMATE_PORT", "8002"))
 SECRET = os.environ.get("APPLYMATE_SECRET", "applymate-local-dev-secret")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", "60"))
+DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "scholarship-files")
 ALLOWED_ORIGINS = {
     origin.strip()
     for origin in os.environ.get("APPLYMATE_ALLOWED_ORIGINS", "*").split(",")
     if origin.strip()
 }
-
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 TABLE_COLUMNS = {
     "profiles": {"id", "user_id", "display_name", "avatar_url", "bio", "skills", "education", "experience", "achievements", "interests", "gpa", "major", "education_level", "cv_raw_text", "activity_streak", "monthly_goal", "quick_notes", "last_active_at", "created_at", "updated_at"},
@@ -92,11 +89,69 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def require_database():
+    if not DATABASE_URL:
+        raise ValueError("SUPABASE_DB_URL or DATABASE_URL is not configured")
+
+
+def require_supabase_storage():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for storage uploads")
+
+
+def pg_sql(sql):
+    return sql.replace("?", "%s")
+
+
+class DB:
+    def __init__(self):
+        require_database()
+        self._conn = connect(DATABASE_URL, row_factory=dict_row)
+
+    def execute(self, sql, params=()):
+        return self._conn.execute(pg_sql(sql), params)
+
+    def executescript(self, script):
+        for statement in [part.strip() for part in script.split(";") if part.strip()]:
+            self._conn.execute(statement)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
 def conn():
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    return db
+    return DB()
+
+
+def upload_to_supabase_storage(bucket, path, content, mime_type):
+    require_supabase_storage()
+    endpoint = f"{SUPABASE_URL}/storage/v1/object/{quote(bucket)}/{quote(path, safe='/')}"
+    req = urlrequest.Request(
+        endpoint,
+        data=content,
+        headers={
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Content-Type": mime_type or "application/octet-stream",
+            "x-upsert": "true",
+        },
+        method="POST",
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=60) as response:
+            raw = response.read().decode("utf-8", errors="ignore")
+            return json.loads(raw) if raw else {}
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        try:
+            parsed = json.loads(detail)
+            message = parsed.get("message") or parsed.get("error") or detail
+        except Exception:
+            message = detail or str(exc)
+        raise ValueError(f"Supabase Storage upload failed: {message}") from exc
 
 
 def json_cell(table, col, value):
@@ -195,7 +250,7 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, user_id TEXT UNIQUE NOT NULL, display_name TEXT, avatar_url TEXT, bio TEXT, skills TEXT DEFAULT '[]', education TEXT DEFAULT '[]', experience TEXT DEFAULT '[]', achievements TEXT DEFAULT '[]', interests TEXT DEFAULT '[]', gpa TEXT, major TEXT, education_level TEXT, cv_raw_text TEXT, activity_streak INTEGER DEFAULT 0, monthly_goal INTEGER DEFAULT 5, quick_notes TEXT DEFAULT '', last_active_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, role TEXT NOT NULL, UNIQUE(user_id, role), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
-        CREATE TABLE IF NOT EXISTS scholarships (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, amount REAL, deadline TEXT, link TEXT, status TEXT NOT NULL DEFAULT 'saved', eligibility_notes TEXT, tags TEXT DEFAULT '[]', notes TEXT, share_token TEXT UNIQUE, is_shared INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, position INTEGER DEFAULT 0, is_favorited INTEGER DEFAULT 0, application_type TEXT NOT NULL DEFAULT 'scholarship', FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS scholarships (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, amount DOUBLE PRECISION, deadline TEXT, link TEXT, status TEXT NOT NULL DEFAULT 'saved', eligibility_notes TEXT, tags TEXT DEFAULT '[]', notes TEXT, share_token TEXT UNIQUE, is_shared INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, position INTEGER DEFAULT 0, is_favorited INTEGER DEFAULT 0, application_type TEXT NOT NULL DEFAULT 'scholarship', FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS shared_scholarships (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, shared_by TEXT NOT NULL, shared_with TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS scholarship_files (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, user_id TEXT NOT NULL, file_name TEXT NOT NULL, file_path TEXT NOT NULL, file_size INTEGER, mime_type TEXT, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS community_posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, user_email TEXT NOT NULL, content TEXT NOT NULL, scholarship_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE SET NULL);
@@ -250,8 +305,10 @@ def where_sql(filters, params):
                 clauses.append(f"{col} IN ({', '.join('?' for _ in values)})")
                 params.extend(values)
         elif op == "is":
-            clauses.append(f"{col} IS NULL" if value is None else f"{col} IS ?")
-            if value is not None:
+            if value is None:
+                clauses.append(f"{col} IS NULL")
+            else:
+                clauses.append(f"{col} IS NOT DISTINCT FROM ?")
                 params.append(value)
     return (" WHERE " + " AND ".join(clauses)) if clauses else ""
 
@@ -388,7 +445,7 @@ def run_rpc(name, body, user):
             rows = db.execute(
                 """
                 SELECT community_posts.id, community_posts.content, community_posts.created_at,
-                       COALESCE(NULLIF(profiles.display_name, ''), substr(community_posts.user_email, 1, instr(community_posts.user_email, '@') - 1)) AS display_name
+                       COALESCE(NULLIF(profiles.display_name, ''), split_part(community_posts.user_email, '@', 1)) AS display_name
                 FROM community_posts
                 LEFT JOIN profiles ON profiles.user_id = community_posts.user_id
                 ORDER BY community_posts.created_at DESC
@@ -910,7 +967,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             if path == "/api/health":
-                return self.reply({"ok": True, "backend": "python-sqlite"})
+                return self.reply({"ok": True, "backend": "python-postgres", "storage": "supabase"})
             if path == "/api/auth/signup" and self.command == "POST":
                 return self.signup()
             if path == "/api/auth/login" and self.command == "POST":
@@ -934,7 +991,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply({"error": str(exc)}, 403)
         except LookupError as exc:
             return self.reply({"error": str(exc)}, 404)
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             return self.reply({"error": str(exc)}, 400)
         except ValueError as exc:
             return self.reply({"error": str(exc)}, 400)
@@ -1018,17 +1075,15 @@ class Handler(BaseHTTPRequestHandler):
     def upload(self, parsed):
         user = self.user(True)
         params = parse_qs(parsed.query)
-        bucket = (params.get("bucket") or ["files"])[0]
+        bucket = (params.get("bucket") or [SUPABASE_STORAGE_BUCKET])[0]
         path = (params.get("path") or [str(uuid.uuid4())])[0]
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
             raise ValueError("Expected multipart/form-data")
         length = int(self.headers.get("Content-Length", "0"))
         part = parse_multipart(content_type, self.rfile.read(length))
-        target = UPLOAD_ROOT / bucket / path
-        target.parent.mkdir(parents=True, exist_ok=True)
         raw = part["content"]
-        target.write_bytes(raw)
+        upload_to_supabase_storage(bucket, path, raw, part["mime_type"])
         self.reply({"data": {"path": f"{bucket}/{path}", "size": len(raw), "uploaded_by": user["id"], "mime_type": part["mime_type"], "file_name": part["filename"]}, "error": None})
 
 

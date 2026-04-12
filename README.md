@@ -8,8 +8,8 @@ Frontend:
 
 Backend:
 - Python standard library HTTP server
-- SQLite
-- Local file storage
+- Supabase Postgres
+- Supabase Storage
 - Signed token auth
 - Gemini API integration
 
@@ -34,6 +34,8 @@ The frontend expects `VITE_API_URL` to point at the backend.
 Recommended split:
 - Frontend on Vercel
 - Backend on Render
+- Database on Supabase Postgres
+- File storage on Supabase Storage
 
 ### Render
 
@@ -42,13 +44,17 @@ This repo includes [render.yaml](/abs/path/c:/Users/lisan/Desktop/applymate1/ren
 Required backend env vars:
 - `GEMINI_API_KEY`
 - `APPLYMATE_ALLOWED_ORIGINS`
+- `SUPABASE_DB_URL`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 Recommended backend env vars:
 - `APPLYMATE_SECRET`
 - `GEMINI_MODEL`
+- `SUPABASE_STORAGE_BUCKET`
 
 Notes:
-- The backend uses SQLite and file uploads, so Render should use the included persistent disk.
+- The backend now uses hosted Supabase Postgres and Supabase Storage, so Render does not need a persistent disk.
 - The backend health endpoint is `/api/health`.
 
 ### Vercel
@@ -64,6 +70,10 @@ Set `VITE_API_URL` to your Render backend URL, for example:
 https://applymate-backend.onrender.com
 ```
 
-## Important deployment note
+## Supabase setup
 
-This backend is now deployable on Render, but it is still a single-process SQLite app. That is acceptable for an early deployment, but it is not the right long-term production architecture for high concurrency or multi-instance scaling.
+Create:
+- a Postgres project
+- a private storage bucket named `scholarship-files`
+
+Use the session-mode pooler connection string from Supabase for `SUPABASE_DB_URL`.
