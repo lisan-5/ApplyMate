@@ -10,6 +10,7 @@ import re
 import secrets
 import smtplib
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -1185,14 +1186,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self.upload(parsed)
             return self.reply({"error": "Not found"}, 404)
         except PermissionError as exc:
+            print(f"[applymate] PermissionError on {self.command} {path}: {exc}")
             return self.reply({"error": str(exc)}, 403)
         except LookupError as exc:
+            print(f"[applymate] LookupError on {self.command} {path}: {exc}")
             return self.reply({"error": str(exc)}, 404)
         except IntegrityError as exc:
+            print(f"[applymate] IntegrityError on {self.command} {path}: {exc}")
             return self.reply({"error": str(exc)}, 400)
         except ValueError as exc:
+            print(f"[applymate] ValueError on {self.command} {path}: {exc}")
             return self.reply({"error": str(exc)}, 400)
         except Exception as exc:
+            print(f"[applymate] Unexpected error on {self.command} {path}: {exc}")
+            traceback.print_exc()
             return self.reply({"error": str(exc)}, 500)
 
     def read_json(self):
