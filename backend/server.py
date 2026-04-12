@@ -8,9 +8,11 @@ import json
 import os
 import re
 import secrets
+import smtplib
 import time
 import uuid
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -48,6 +50,11 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "scholarship-files")
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").replace(" ", "")
+SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", SMTP_USER)
 ALLOWED_ORIGINS = {
     origin.strip()
     for origin in os.environ.get("APPLYMATE_ALLOWED_ORIGINS", "*").split(",")
@@ -64,6 +71,7 @@ TABLE_COLUMNS = {
     "scholarship_files": {"id", "scholarship_id", "user_id", "file_name", "file_path", "file_size", "mime_type", "created_at"},
     "community_posts": {"id", "user_id", "user_email", "content", "scholarship_id", "created_at", "updated_at"},
     "community_replies": {"id", "post_id", "user_id", "user_email", "content", "created_at"},
+    "community_post_votes": {"id", "post_id", "user_id", "value", "created_at", "updated_at"},
     "application_checklist": {"id", "scholarship_id", "user_id", "label", "is_done", "position", "created_at"},
     "ai_results_cache": {"id", "user_id", "scholarship_id", "result_type", "result_data", "created_at", "updated_at"},
 }
@@ -84,6 +92,7 @@ OWNER_FIELD = {
     "ai_results_cache": "user_id",
     "community_posts": "user_id",
     "community_replies": "user_id",
+    "community_post_votes": "user_id",
 }
 
 
@@ -99,6 +108,11 @@ def require_database():
 def require_supabase_storage():
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for storage uploads")
+
+
+def require_email():
+    if not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM_EMAIL:
+        raise ValueError("SMTP email settings are not configured")
 
 
 def pg_sql(sql):
@@ -193,6 +207,23 @@ def verify_password(password, stored):
     return hmac.compare_digest(actual, expected)
 
 
+def generate_code():
+    return f"{secrets.randbelow(100000):05d}"
+
+
+def send_email(to_email, subject, body):
+    require_email()
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = SMTP_FROM_EMAIL
+    message["To"] = to_email
+    message.set_content(body)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(message)
+
+
 def b64(data):
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
@@ -225,6 +256,74 @@ def get_user_by_email(email):
     db = conn()
     try:
         return db.execute("SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    finally:
+        db.close()
+
+
+def get_auth_code(email, purpose, code):
+    db = conn()
+    try:
+        return db.execute(
+            """
+            SELECT *
+            FROM auth_codes
+            WHERE email = ? AND purpose = ? AND code = ? AND consumed_at IS NULL AND expires_at > ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (email.lower().strip(), purpose, code, now()),
+        ).fetchone()
+    finally:
+        db.close()
+
+
+def get_latest_auth_code(email, purpose):
+    db = conn()
+    try:
+        return db.execute(
+            """
+            SELECT *
+            FROM auth_codes
+            WHERE email = ? AND purpose = ? AND consumed_at IS NULL AND expires_at > ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (email.lower().strip(), purpose, now()),
+        ).fetchone()
+    finally:
+        db.close()
+
+
+def upsert_auth_code(email, purpose, code, password_hash=None, user_id=None, expires_in_minutes=15):
+    db = conn()
+    try:
+        db.execute("DELETE FROM auth_codes WHERE email = ? AND purpose = ?", (email.lower().strip(), purpose))
+        db.execute(
+            """
+            INSERT INTO auth_codes (id, email, purpose, code, password_hash, user_id, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                email.lower().strip(),
+                purpose,
+                code,
+                password_hash,
+                user_id,
+                datetime.fromtimestamp(time.time() + (expires_in_minutes * 60), timezone.utc).isoformat(),
+                now(),
+            ),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def consume_auth_code(code_id):
+    db = conn()
+    try:
+        db.execute("UPDATE auth_codes SET consumed_at = ? WHERE id = ?", (now(), code_id))
+        db.commit()
     finally:
         db.close()
 
@@ -304,6 +403,7 @@ def ensure_schema():
     db.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS auth_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, purpose TEXT NOT NULL, code TEXT NOT NULL, password_hash TEXT, user_id TEXT, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, consumed_at TEXT);
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, user_id TEXT UNIQUE NOT NULL, display_name TEXT, avatar_url TEXT, bio TEXT, skills TEXT DEFAULT '[]', education TEXT DEFAULT '[]', experience TEXT DEFAULT '[]', achievements TEXT DEFAULT '[]', interests TEXT DEFAULT '[]', gpa TEXT, major TEXT, education_level TEXT, cv_raw_text TEXT, activity_streak INTEGER DEFAULT 0, monthly_goal INTEGER DEFAULT 5, quick_notes TEXT DEFAULT '', last_active_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, role TEXT NOT NULL, UNIQUE(user_id, role), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -312,6 +412,7 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS scholarship_files (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, user_id TEXT NOT NULL, file_name TEXT NOT NULL, file_path TEXT NOT NULL, file_size INTEGER, mime_type TEXT, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS community_posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, user_email TEXT NOT NULL, content TEXT NOT NULL, scholarship_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE SET NULL);
         CREATE TABLE IF NOT EXISTS community_replies (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, user_email TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(post_id) REFERENCES community_posts(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS community_post_votes (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, value INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(post_id, user_id), FOREIGN KEY(post_id) REFERENCES community_posts(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS application_checklist (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, user_id TEXT NOT NULL, label TEXT NOT NULL, is_done INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS ai_results_cache (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, scholarship_id TEXT, result_type TEXT NOT NULL, result_data TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(user_id, scholarship_id, result_type));
         """
@@ -328,14 +429,15 @@ def ensure_schema():
     db.close()
 
 
-def create_user(email, password):
+def create_user(email, password=None, password_hash=None):
     user = {"id": str(uuid.uuid4()), "email": email.lower().strip()}
     timestamp = now()
     db = conn()
     try:
         db.execute("SELECT pg_advisory_xact_lock(?)", (SIGNUP_ADMIN_LOCK_ID,))
         bootstrap_admin_id = get_bootstrap_admin_user_id(db)
-        db.execute("INSERT INTO users (id, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", (user["id"], user["email"], hash_password(password), timestamp, timestamp))
+        final_password_hash = password_hash or hash_password(password or "")
+        db.execute("INSERT INTO users (id, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", (user["id"], user["email"], final_password_hash, timestamp, timestamp))
         db.execute("INSERT INTO profiles (id, user_id, display_name, skills, education, experience, achievements, interests, activity_streak, monthly_goal, quick_notes, created_at, updated_at) VALUES (?, ?, ?, '[]', '[]', '[]', '[]', '[]', 0, 5, '', ?, ?)", (str(uuid.uuid4()), user["id"], user["email"].split("@", 1)[0], timestamp, timestamp))
         role = "admin" if not bootstrap_admin_id else "user"
         db.execute("INSERT INTO user_roles (id, user_id, role) VALUES (?, ?, ?)", (str(uuid.uuid4()), user["id"], role))
@@ -392,7 +494,7 @@ def where_sql(filters, params):
 def check_access(table, operation, user, values, filters):
     if table not in TABLE_COLUMNS:
         raise ValueError("Unknown table")
-    if table in {"community_posts", "community_replies"} and operation == "select":
+    if table in {"community_posts", "community_replies", "community_post_votes"} and operation == "select":
         if not user:
             raise PermissionError("Unauthorized")
         return
@@ -442,6 +544,9 @@ def run_query(payload, user):
             for row in rows:
                 data = dict(row)
                 data.setdefault("id", str(uuid.uuid4()))
+                if table == "community_post_votes":
+                    data["user_id"] = user["id"]
+                    data["value"] = 1 if int(data.get("value", 1)) > 0 else -1
                 if table == "scholarships":
                     data.setdefault("share_token", str(uuid.uuid4()))
                     data.setdefault("is_shared", False)
@@ -465,6 +570,10 @@ def run_query(payload, user):
                 return []
             params = []
             data = dict(values)
+            if table == "community_post_votes":
+                if "user_id" in data and data["user_id"] != user["id"]:
+                    raise PermissionError("Unauthorized")
+                data["value"] = 1 if int(data.get("value", 1)) > 0 else -1
             if "updated_at" in TABLE_COLUMNS[table]:
                 data["updated_at"] = now()
             sets = []
@@ -480,12 +589,18 @@ def run_query(payload, user):
         if operation == "delete":
             params = []
             sql = f"DELETE FROM {table}" + where_sql(filters, params)
+            if table == "community_post_votes":
+                sql += (" AND " if " WHERE " in sql else " WHERE ") + "user_id = ?"
+                params.append(user["id"])
             db.execute(sql, params)
             db.commit()
             return []
         if operation == "upsert":
             data = dict(values or {})
             data.setdefault("id", str(uuid.uuid4()))
+            if table == "community_post_votes":
+                data["user_id"] = user["id"]
+                data["value"] = 1 if int(data.get("value", 1)) > 0 else -1
             stamp = now()
             if "created_at" in TABLE_COLUMNS[table]:
                 data.setdefault("created_at", stamp)
@@ -1046,8 +1161,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({"ok": True, "backend": "python-postgres", "storage": "supabase"})
             if path == "/api/auth/signup" and self.command == "POST":
                 return self.signup()
+            if path == "/api/auth/verify-email" and self.command == "POST":
+                return self.verify_email()
             if path == "/api/auth/login" and self.command == "POST":
                 return self.login()
+            if path == "/api/auth/forgot-password" and self.command == "POST":
+                return self.forgot_password()
+            if path == "/api/auth/reset-password" and self.command == "POST":
+                return self.reset_password_with_code()
             if path == "/api/auth/session" and self.command == "GET":
                 return self.session()
             if path == "/api/auth/password" and self.command == "PATCH":
@@ -1112,7 +1233,32 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Password must be at least 6 characters")
         if get_user_by_email(email):
             raise ValueError("User already registered")
-        user = create_user(email, password)
+        code = generate_code()
+        upsert_auth_code(email, "signup", code, password_hash=hash_password(password))
+        send_email(
+            email,
+            "ApplyMate email verification",
+            (
+                "Welcome to ApplyMate.\n\n"
+                f"Your verification code is: {code}\n\n"
+                "Enter this 5-digit code to verify your email and finish creating your account."
+            ),
+        )
+        self.reply({"data": {"requires_verification": True, "email": email}, "error": None})
+
+    def verify_email(self):
+        body = self.read_json()
+        email = (body.get("email") or "").strip().lower()
+        code = str(body.get("code") or "").strip()
+        if not email or not code:
+            raise ValueError("Email and verification code are required")
+        if get_user_by_email(email):
+            raise ValueError("User already registered")
+        auth_code = get_auth_code(email, "signup", code)
+        if not auth_code or not auth_code.get("password_hash"):
+            raise ValueError("Invalid or expired verification code")
+        user = create_user(email, password_hash=auth_code["password_hash"])
+        consume_auth_code(auth_code["id"])
         token = token_for(user)
         self.reply({"data": {"session": {"access_token": token, "user": user}, "user": user}, "error": None})
 
@@ -1121,11 +1267,58 @@ class Handler(BaseHTTPRequestHandler):
         email = (body.get("email") or "").strip().lower()
         password = body.get("password") or ""
         record = get_user_by_email(email)
+        if not record and get_latest_auth_code(email, "signup"):
+            return self.reply({"data": None, "error": {"message": "Email not verified yet. Check your inbox for the 5-digit verification code."}}, 401)
         if not record or not verify_password(password, record["password_hash"]):
             return self.reply({"data": None, "error": {"message": "Invalid login credentials"}}, 401)
         user = {"id": record["id"], "email": record["email"]}
         token = token_for(user)
         self.reply({"data": {"session": {"access_token": token, "user": user}, "user": user}, "error": None})
+
+    def forgot_password(self):
+        body = self.read_json()
+        email = (body.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            raise ValueError("Valid email is required")
+        user = get_user_by_email(email)
+        if not user:
+            raise ValueError("No account found for that email")
+        code = generate_code()
+        upsert_auth_code(email, "reset_password", code, user_id=user["id"])
+        send_email(
+            email,
+            "ApplyMate password reset code",
+            (
+                "We received a request to reset your ApplyMate password.\n\n"
+                f"Your 5-digit reset code is: {code}\n\n"
+                "If you did not request this, you can ignore this email."
+            ),
+        )
+        self.reply({"data": {"sent": True, "email": email}, "error": None})
+
+    def reset_password_with_code(self):
+        body = self.read_json()
+        email = (body.get("email") or "").strip().lower()
+        code = str(body.get("code") or "").strip()
+        password = body.get("password") or ""
+        if not email or not code:
+            raise ValueError("Email and reset code are required")
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        auth_code = get_auth_code(email, "reset_password", code)
+        if not auth_code or not auth_code.get("user_id"):
+            raise ValueError("Invalid or expired reset code")
+        db = conn()
+        try:
+            db.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (hash_password(password), now(), auth_code["user_id"]),
+            )
+            db.commit()
+        finally:
+            db.close()
+        consume_auth_code(auth_code["id"])
+        self.reply({"data": {"reset": True}, "error": None})
 
     def session(self):
         user = self.user(False)

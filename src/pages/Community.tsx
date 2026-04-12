@@ -19,6 +19,9 @@ interface CommunityPost {
   created_at: string;
   reply_count?: number;
   scholarship_name?: string | null;
+  upvotes?: number;
+  downvotes?: number;
+  user_vote?: 1 | -1 | 0;
 }
 
 export default function Community() {
@@ -60,10 +63,31 @@ export default function Community() {
       schData?.forEach((s) => { scholarshipNames[s.id] = s.name; });
     }
 
+    const { data: votesData } = await api
+      .from("community_post_votes")
+      .select("post_id, user_id, value")
+      .in("post_id", postIds.length > 0 ? postIds : ["__none__"]);
+
+    const voteSummary: Record<string, { upvotes: number; downvotes: number }> = {};
+    const currentUserVotes: Record<string, 1 | -1 | 0> = {};
+    votesData?.forEach((vote) => {
+      if (!voteSummary[vote.post_id]) {
+        voteSummary[vote.post_id] = { upvotes: 0, downvotes: 0 };
+      }
+      if (vote.value > 0) voteSummary[vote.post_id].upvotes += 1;
+      else voteSummary[vote.post_id].downvotes += 1;
+      if (vote.user_id === user?.id) {
+        currentUserVotes[vote.post_id] = vote.value > 0 ? 1 : -1;
+      }
+    });
+
     const enriched: CommunityPost[] = postsData.map((p) => ({
       ...p,
       reply_count: replyCounts[p.id] || 0,
       scholarship_name: p.scholarship_id ? scholarshipNames[p.scholarship_id] || null : null,
+      upvotes: voteSummary[p.id]?.upvotes || 0,
+      downvotes: voteSummary[p.id]?.downvotes || 0,
+      user_vote: currentUserVotes[p.id] || 0,
     }));
 
     setPosts(enriched);
@@ -146,6 +170,7 @@ export default function Community() {
                   currentUserId={user?.id}
                   onOpenThread={setActiveThread}
                   onDelete={handleDelete}
+                  onVote={fetchPosts}
                 />
               ))
             )}

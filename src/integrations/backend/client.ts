@@ -173,9 +173,15 @@ class QueryBuilder<T = any> implements PromiseLike<{ data: T; error: any }> {
 export const api = {
   auth: {
     async signUp({ email, password }: { email: string; password: string }) {
-      const result = await apiFetch<{ session: Session; user: User }>("/api/auth/signup", {
+      return apiFetch<{ requires_verification: boolean; email: string }>("/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({ email, password }),
+      });
+    },
+    async verifyEmailCode({ email, code }: { email: string; code: string }) {
+      const result = await apiFetch<{ session: Session; user: User }>("/api/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({ email, code }),
       });
       if (result.data?.session?.access_token) {
         setToken(result.data.session.access_token);
@@ -193,6 +199,26 @@ export const api = {
         notify("SIGNED_IN", result.data.session);
       }
       return result;
+    },
+    async requestPasswordReset({ email }: { email: string }) {
+      return apiFetch<{ sent: boolean; email: string }>("/api/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+    },
+    async resetPasswordWithCode({
+      email,
+      code,
+      password,
+    }: {
+      email: string;
+      code: string;
+      password: string;
+    }) {
+      return apiFetch<{ reset: boolean }>("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ email, code, password }),
+      });
     },
     async signOut() {
       setToken(null);

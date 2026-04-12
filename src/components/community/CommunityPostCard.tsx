@@ -1,10 +1,18 @@
 import { formatDistanceToNow } from "date-fns";
-import { MessageSquare, Trash2, Link as LinkIcon } from "lucide-react";
+import {
+  MessageSquare,
+  Trash2,
+  Link as LinkIcon,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+import { api } from "@/integrations/backend/client";
+import { toast } from "sonner";
 
 interface CommunityPost {
   id: string;
@@ -15,6 +23,9 @@ interface CommunityPost {
   created_at: string;
   reply_count?: number;
   scholarship_name?: string | null;
+  upvotes?: number;
+  downvotes?: number;
+  user_vote?: 1 | -1 | 0;
 }
 
 interface Props {
@@ -22,11 +33,47 @@ interface Props {
   currentUserId: string | undefined;
   onOpenThread: (postId: string) => void;
   onDelete: (postId: string) => void;
+  onVote: () => Promise<void>;
 }
 
-export function CommunityPostCard({ post, currentUserId, onOpenThread, onDelete }: Props) {
+export function CommunityPostCard({
+  post,
+  currentUserId,
+  onOpenThread,
+  onDelete,
+  onVote,
+}: Props) {
   const initial = post.user_email?.[0]?.toUpperCase() ?? "?";
   const displayName = post.user_email.split("@")[0];
+
+  const handleVote = async (value: 1 | -1) => {
+    if (!currentUserId) return;
+    const currentVote = post.user_vote || 0;
+    if (currentVote === value) {
+      const { error } = await api
+        .from("community_post_votes")
+        .delete()
+        .eq("post_id", post.id);
+      if (error) {
+        toast.error("Failed to remove vote");
+        return;
+      }
+    } else {
+      const { error } = await api.from("community_post_votes").upsert(
+        {
+          post_id: post.id,
+          user_id: currentUserId,
+          value,
+        },
+        { onConflict: "post_id,user_id" },
+      );
+      if (error) {
+        toast.error("Failed to save vote");
+        return;
+      }
+    }
+    await onVote();
+  };
 
   return (
     <Card className="group hover:shadow-md transition-shadow">
@@ -59,6 +106,27 @@ export function CommunityPostCard({ post, currentUserId, onOpenThread, onDelete 
             )}
 
             <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center rounded-full border border-border/70 bg-background/60">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 px-2 text-xs ${post.user_vote === 1 ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => handleVote(1)}
+                >
+                  <ChevronUp className="h-3.5 w-3.5 mr-1" />
+                  {post.upvotes || 0}
+                </Button>
+                <div className="h-4 w-px bg-border/70" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 px-2 text-xs ${post.user_vote === -1 ? "text-destructive" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => handleVote(-1)}
+                >
+                  <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                  {post.downvotes || 0}
+                </Button>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"

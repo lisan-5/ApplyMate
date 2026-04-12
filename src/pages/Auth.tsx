@@ -15,6 +15,9 @@ const emailSchema = z.string().email("Please enter a valid email");
 const passwordSchema = z
   .string()
   .min(6, "Password must be at least 6 characters");
+const codeSchema = z
+  .string()
+  .regex(/^\d{5}$/, "Code must be exactly 5 digits");
 
 const ADMIN_CHALLENGES = [
   "What is the boiling point of water in Fahrenheit minus 154?",
@@ -26,13 +29,21 @@ const ADMIN_CHALLENGES = [
 
 const CORRECT_ANSWER = "58";
 
+type AuthMode =
+  | "login"
+  | "signup"
+  | "verify-email"
+  | "forgot-password"
+  | "reset-password";
+
 export default function Auth() {
   const { user, loading, isAdmin } = useAuth();
   const { toast } = useToast();
-  const [isLogin, setIsLogin] = useState(true);
+  const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [code, setCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -64,8 +75,16 @@ export default function Auth() {
     return <Navigate to="/admin" replace />;
   if (user && isAdmin && !showChallenge && !pendingAdmin) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const resetFormState = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setPassword("");
+    setConfirmPassword("");
+    setCode("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  const validateEmail = () => {
     const emailResult = emailSchema.safeParse(email);
     if (!emailResult.success) {
       toast({
@@ -73,9 +92,12 @@ export default function Auth() {
         description: emailResult.error.errors[0].message,
         variant: "destructive",
       });
-      return;
+      return false;
     }
+    return true;
+  };
 
+  const validatePassword = () => {
     const passwordResult = passwordSchema.safeParse(password);
     if (!passwordResult.success) {
       toast({
@@ -83,10 +105,20 @@ export default function Auth() {
         description: passwordResult.error.errors[0].message,
         variant: "destructive",
       });
-      return;
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateEmail()) return;
+
+    if (mode === "login" || mode === "signup" || mode === "reset-password") {
+      if (!validatePassword()) return;
     }
 
-    if (!isLogin && password !== confirmPassword) {
+    if (mode === "signup" && password !== confirmPassword) {
       toast({
         title: "Passwords do not match",
         description: "Confirm password must match the password exactly.",
@@ -95,15 +127,24 @@ export default function Auth() {
       return;
     }
 
+    if (mode === "verify-email" || mode === "reset-password") {
+      const codeResult = codeSchema.safeParse(code);
+      if (!codeResult.success) {
+        toast({
+          title: "Invalid code",
+          description: codeResult.error.errors[0].message,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
-      if (isLogin) {
-        const { error } = await api.auth.signInWithPassword({
-          email,
-          password,
-        });
+      if (mode === "login") {
+        const { error } = await api.auth.signInWithPassword({ email, password });
         if (error) throw error;
-      } else {
+      } else if (mode === "signup") {
         const { error } = await api.auth.signUp({ email, password });
         if (error) {
           if (error.message.includes("already registered")) {
@@ -118,12 +159,43 @@ export default function Auth() {
           throw error;
         }
         toast({
-          title: "Account created",
+          title: "Verification code sent",
           description:
-            "Your account was created successfully. You can sign in now.",
+            "Check your email and enter the 5-digit code to finish creating your account.",
         });
-        setIsLogin(true);
-        setConfirmPassword("");
+        resetFormState("verify-email");
+      } else if (mode === "verify-email") {
+        const { error } = await api.auth.verifyEmailCode({ email, code });
+        if (error) throw error;
+      } else if (mode === "forgot-password") {
+        const { error } = await api.auth.requestPasswordReset({ email });
+        if (error) throw error;
+        toast({
+          title: "Reset code sent",
+          description:
+            "Check your email for the 5-digit reset code, then choose a new password.",
+        });
+        resetFormState("reset-password");
+      } else if (mode === "reset-password") {
+        if (password !== confirmPassword) {
+          toast({
+            title: "Passwords do not match",
+            description: "Confirm password must match the password exactly.",
+            variant: "destructive",
+          });
+          return;
+        }
+        const { error } = await api.auth.resetPasswordWithCode({
+          email,
+          code,
+          password,
+        });
+        if (error) throw error;
+        toast({
+          title: "Password updated",
+          description: "Your password was reset. Sign in with your new password.",
+        });
+        resetFormState("login");
       }
     } catch (err: unknown) {
       const message =
@@ -153,6 +225,22 @@ export default function Auth() {
       setChallengeQuestion(q);
       setChallengeAnswer("");
     }
+  };
+
+  const titleMap: Record<AuthMode, string> = {
+    login: "Welcome back",
+    signup: "Get started",
+    "verify-email": "Verify your email",
+    "forgot-password": "Forgot password",
+    "reset-password": "Reset password",
+  };
+
+  const subtitleMap: Record<AuthMode, string> = {
+    login: "Sign in to your account",
+    signup: "Create your free account",
+    "verify-email": "Enter the 5-digit code we sent to your inbox",
+    "forgot-password": "Send a 5-digit reset code to your email",
+    "reset-password": "Use your code and choose a new password",
   };
 
   const authBg = (
@@ -276,11 +364,9 @@ export default function Auth() {
               className="text-2xl font-bold"
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
-              {isLogin ? "Welcome back" : "Get started"}
+              {titleMap[mode]}
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {isLogin ? "Sign in to your account" : "Create your free account"}
-            </p>
+            <p className="text-sm text-muted-foreground">{subtitleMap[mode]}</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -297,43 +383,52 @@ export default function Auth() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={mode === "verify-email"}
                 className="h-12 rounded-xl border-border/50 bg-muted/50 transition-all focus:border-primary/50 focus:bg-background"
               />
             </div>
-            <div className="space-y-2">
-              <Label
-                htmlFor="password"
-                className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-              >
-                Password
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-12 rounded-xl border-border/50 bg-muted/50 pr-11 transition-all focus:border-primary/50 focus:bg-background"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+
+            {(mode === "login" || mode === "signup" || mode === "reset-password") && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="password"
+                  className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
+                  Password
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder={
+                      mode === "reset-password"
+                        ? "Choose a new password"
+                        : "Enter your password"
+                    }
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="h-12 rounded-xl border-border/50 bg-muted/50 pr-11 transition-all focus:border-primary/50 focus:bg-background"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
-            {!isLogin && (
+            )}
+
+            {(mode === "signup" || mode === "reset-password") && (
               <div className="space-y-2">
                 <Label
                   htmlFor="confirm-password"
@@ -372,32 +467,139 @@ export default function Auth() {
                 </div>
               </div>
             )}
+
+            {(mode === "verify-email" || mode === "reset-password") && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="code"
+                  className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  5-Digit Code
+                </Label>
+                <Input
+                  id="code"
+                  inputMode="numeric"
+                  pattern="\d{5}"
+                  maxLength={5}
+                  placeholder="12345"
+                  value={code}
+                  onChange={(e) =>
+                    setCode(e.target.value.replace(/\D/g, "").slice(0, 5))
+                  }
+                  required
+                  className="h-12 rounded-xl border-border/50 bg-muted/50 transition-all focus:border-primary/50 focus:bg-background"
+                />
+              </div>
+            )}
+
             <Button
               type="submit"
               className="gradient-primary glow h-12 w-full rounded-xl border-0 text-sm font-semibold text-white"
               disabled={submitting}
             >
-              {isLogin ? "Sign In" : "Create Account"}{" "}
+              {mode === "login" && "Sign In"}
+              {mode === "signup" && "Send Verification Code"}
+              {mode === "verify-email" && "Verify Email"}
+              {mode === "forgot-password" && "Send Reset Code"}
+              {mode === "reset-password" && "Reset Password"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </form>
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">
-              {isLogin
-                ? "Don't have an account?"
-                : "Already have an account?"}{" "}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setConfirmPassword("");
-                setShowConfirmPassword(false);
-              }}
-              className="font-semibold text-primary hover:underline"
-            >
-              {isLogin ? "Sign up" : "Sign in"}
-            </button>
+
+          <div className="space-y-3 text-center text-sm">
+            {mode === "login" && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => resetFormState("forgot-password")}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Forgot password?
+                </button>
+                <div>
+                  <span className="text-muted-foreground">
+                    Don&apos;t have an account?{" "}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => resetFormState("signup")}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    Sign up
+                  </button>
+                </div>
+              </>
+            )}
+
+            {mode === "signup" && (
+              <div>
+                <span className="text-muted-foreground">
+                  Already have an account?{" "}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => resetFormState("login")}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  Sign in
+                </button>
+              </div>
+            )}
+
+            {mode === "verify-email" && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => resetFormState("signup")}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Back to sign up
+                </button>
+                <div>
+                  <span className="text-muted-foreground">Need a new code? </span>
+                  <button
+                    type="button"
+                    onClick={() => resetFormState("signup")}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    Resend it
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {mode === "forgot-password" && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => resetFormState("login")}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  Back to sign in
+                </button>
+              </div>
+            )}
+
+            {mode === "reset-password" && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => resetFormState("forgot-password")}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Request a new reset code
+                </button>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => resetFormState("login")}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
