@@ -32,7 +32,9 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showChallenge, setShowChallenge] = useState(false);
   const [challengeQuestion, setChallengeQuestion] = useState("");
@@ -84,6 +86,15 @@ export default function Auth() {
       return;
     }
 
+    if (!isLogin && password !== confirmPassword) {
+      toast({
+        title: "Passwords do not match",
+        description: "Confirm password must match the password exactly.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isLogin) {
@@ -112,6 +123,7 @@ export default function Auth() {
             "Your account was created successfully. You can sign in now.",
         });
         setIsLogin(true);
+        setConfirmPassword("");
       }
     } catch (err: unknown) {
       const message =
@@ -177,7 +189,7 @@ export default function Auth() {
             <ApplyMateLogo size="lg" className="text-primary" />
             <h1
               className="gradient-text text-2xl font-bold tracking-tight"
-              style={{ fontFamily: "'Sora', sans-serif" }}
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
               Admin Verification
             </h1>
@@ -186,7 +198,7 @@ export default function Auth() {
             <div className="space-y-2 text-center">
               <h2
                 className="text-lg font-bold"
-                style={{ fontFamily: "'Sora', sans-serif" }}
+                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
               >
                 Security Question
               </h2>
@@ -249,7 +261,7 @@ export default function Auth() {
             <ApplyMateLogo size="lg" className="text-primary" />
             <h1
               className="gradient-text text-4xl font-bold tracking-tight"
-              style={{ fontFamily: "'Sora', sans-serif" }}
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
               ApplyMate
             </h1>
@@ -262,7 +274,7 @@ export default function Auth() {
           <div className="space-y-1 text-center">
             <h2
               className="text-2xl font-bold"
-              style={{ fontFamily: "'Sora', sans-serif" }}
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
               {isLogin ? "Welcome back" : "Get started"}
             </h2>
@@ -321,6 +333,45 @@ export default function Auth() {
                 </Button>
               </div>
             </div>
+            {!isLogin && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="confirm-password"
+                  className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  Confirm Password
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    className="h-12 rounded-xl border-border/50 bg-muted/50 pr-11 transition-all focus:border-primary/50 focus:bg-background"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={
+                      showConfirmPassword
+                        ? "Hide confirm password"
+                        : "Show confirm password"
+                    }
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
             <Button
               type="submit"
               className="gradient-primary glow h-12 w-full rounded-xl border-0 text-sm font-semibold text-white"
@@ -338,7 +389,11 @@ export default function Auth() {
             </span>
             <button
               type="button"
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setConfirmPassword("");
+                setShowConfirmPassword(false);
+              }}
               className="font-semibold text-primary hover:underline"
             >
               {isLogin ? "Sign up" : "Sign in"}
