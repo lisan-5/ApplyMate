@@ -173,15 +173,9 @@ class QueryBuilder<T = any> implements PromiseLike<{ data: T; error: any }> {
 export const api = {
   auth: {
     async signUp({ email, password }: { email: string; password: string }) {
-      return apiFetch<{ requires_verification: boolean; email: string }>("/api/auth/signup", {
+      const result = await apiFetch<{ session: Session; user: User }>("/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({ email, password }),
-      });
-    },
-    async verifyEmailCode({ email, code }: { email: string; code: string }) {
-      const result = await apiFetch<{ session: Session; user: User }>("/api/auth/verify-email", {
-        method: "POST",
-        body: JSON.stringify({ email, code }),
       });
       if (result.data?.session?.access_token) {
         setToken(result.data.session.access_token);

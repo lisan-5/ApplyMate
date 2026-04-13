@@ -1254,18 +1254,9 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Password must be at least 6 characters")
         if get_user_by_email(email):
             raise ValueError("User already registered")
-        code = generate_code()
-        upsert_auth_code(email, "signup", code, password_hash=hash_password(password))
-        send_email(
-            email,
-            "ApplyMate email verification",
-            (
-                "Welcome to ApplyMate.\n\n"
-                f"Your verification code is: {code}\n\n"
-                "Enter this 5-digit code to verify your email and finish creating your account."
-            ),
-        )
-        self.reply({"data": {"requires_verification": True, "email": email}, "error": None})
+        user = create_user(email, password)
+        token = token_for(user)
+        self.reply({"data": {"session": {"access_token": token, "user": user}, "user": user}, "error": None})
 
     def verify_email(self):
         body = self.read_json()
@@ -1288,8 +1279,6 @@ class Handler(BaseHTTPRequestHandler):
         email = (body.get("email") or "").strip().lower()
         password = body.get("password") or ""
         record = get_user_by_email(email)
-        if not record and get_latest_auth_code(email, "signup"):
-            return self.reply({"data": None, "error": {"message": "Email not verified yet. Check your inbox for the 5-digit verification code."}}, 401)
         if not record or not verify_password(password, record["password_hash"]):
             return self.reply({"data": None, "error": {"message": "Invalid login credentials"}}, 401)
         user = {"id": record["id"], "email": record["email"]}
