@@ -5,9 +5,9 @@ import { CommandPalette } from "@/components/CommandPalette";
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-background relative">
+    <div className="flex h-screen overflow-hidden bg-background relative">
       <AppSidebar />
-      <div className="flex-1 flex flex-col relative min-w-0 md:pl-64">
+      <div className="flex-1 flex h-screen flex-col relative min-w-0 md:pl-64">
         {/* Ambient mesh gradient */}
         <div className="absolute inset-0 mesh-gradient pointer-events-none opacity-75" />
         <div className="absolute inset-x-0 top-0 h-24 pointer-events-none bg-gradient-to-b from-white/[0.04] to-transparent" />

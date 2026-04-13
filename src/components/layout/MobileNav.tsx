@@ -24,10 +24,10 @@ export function MobileNav() {
       <header className="animate-fade-rise border-b border-sidebar-border bg-sidebar text-sidebar-foreground md:hidden flex items-center justify-between px-4 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-2.5">
           <ApplyMateLogo size="sm" className="text-primary" />
-          <span className="text-lg font-bold" style={{ fontFamily: "'Sora', sans-serif" }}>ApplyMate</span>
+          <span className="text-lg font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>ApplyMate</span>
         </div>
         <div className="flex items-center gap-2">
-          <ThemeToggle className="h-9 w-9 border-sidebar-border/80 bg-sidebar-accent/55" />
+          <ThemeToggle className="h-9 w-9 border-sidebar-border/90 bg-sidebar-accent/80 text-sidebar-foreground shadow-sm" />
           <button onClick={() => setOpen(!open)} className="p-1 rounded-lg hover:bg-sidebar-accent/50 transition-colors">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -46,8 +46,8 @@ export function MobileNav() {
                 className={cn(
                   "nav-link-motion flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all",
                   active
-                    ? "bg-sidebar-accent text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground/60"
+                    ? "bg-sidebar-accent text-sidebar-primary-foreground shadow-sm"
+                    : "text-sidebar-foreground/85"
                 )}
               >
                 <item.icon className={cn("h-4 w-4", active && "text-primary")} />
@@ -61,7 +61,7 @@ export function MobileNav() {
               onClick={() => setOpen(false)}
               className={cn(
                 "nav-link-motion flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all",
-                pathname.startsWith("/admin") ? "bg-sidebar-accent text-sidebar-primary-foreground" : "text-sidebar-foreground/60"
+                pathname.startsWith("/admin") ? "bg-sidebar-accent text-sidebar-primary-foreground shadow-sm" : "text-sidebar-foreground/85"
               )}
             >
               <Users className="h-4 w-4" />
@@ -70,7 +70,7 @@ export function MobileNav() {
           )}
           <button
             onClick={() => { signOut(); setOpen(false); }}
-            className="nav-link-motion flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-sidebar-foreground/50"
+            className="nav-link-motion flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-sidebar-foreground/85"
           >
             <LogOut className="h-4 w-4" />
             Sign Out
