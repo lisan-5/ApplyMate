@@ -12,11 +12,13 @@ type Scholarship = Tables<"scholarships">;
 
 interface Props {
   scholarship: Scholarship;
+  seededInput?: string;
+  onSeedConsumed?: () => void;
 }
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-export function EssayAssistant({ scholarship }: Props) {
+export function EssayAssistant({ scholarship, seededInput, onSeedConsumed }: Props) {
   const { toast } = useToast();
   const { getCached, setCached } = useAiCache();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -39,6 +41,13 @@ export function EssayAssistant({ scholarship }: Props) {
       setCached("essay_history", { messages }, scholarship.id);
     }
   }, [messages, setCached, scholarship.id]);
+
+  useEffect(() => {
+    if (seededInput) {
+      setInput(seededInput);
+      onSeedConsumed?.();
+    }
+  }, [onSeedConsumed, seededInput]);
 
   const send = async () => {
     const prompt = input.trim();

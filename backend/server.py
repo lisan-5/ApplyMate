@@ -68,12 +68,14 @@ TABLE_COLUMNS = {
     "community_posts": {"id", "user_id", "user_email", "content", "scholarship_id", "created_at", "updated_at"},
     "community_replies": {"id", "post_id", "user_id", "user_email", "content", "created_at"},
     "community_post_votes": {"id", "post_id", "user_id", "value", "created_at", "updated_at"},
+    "essay_library_items": {"id", "user_id", "title", "kind", "content", "tags", "created_at", "updated_at"},
     "application_checklist": {"id", "scholarship_id", "user_id", "label", "is_done", "position", "created_at"},
     "ai_results_cache": {"id", "user_id", "scholarship_id", "result_type", "result_data", "created_at", "updated_at"},
 }
 JSON_COLUMNS = {
     "profiles": {"skills", "education", "experience", "achievements", "interests"},
     "scholarships": {"tags"},
+    "essay_library_items": {"tags"},
     "ai_results_cache": {"result_data"},
 }
 BOOL_COLUMNS = {
@@ -89,6 +91,7 @@ OWNER_FIELD = {
     "community_posts": "user_id",
     "community_replies": "user_id",
     "community_post_votes": "user_id",
+    "essay_library_items": "user_id",
 }
 
 
@@ -428,6 +431,7 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS community_posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, user_email TEXT NOT NULL, content TEXT NOT NULL, scholarship_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE SET NULL);
         CREATE TABLE IF NOT EXISTS community_replies (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, user_email TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(post_id) REFERENCES community_posts(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS community_post_votes (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, value INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(post_id, user_id), FOREIGN KEY(post_id) REFERENCES community_posts(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS essay_library_items (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'snippet', content TEXT NOT NULL, tags TEXT DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS application_checklist (id TEXT PRIMARY KEY, scholarship_id TEXT NOT NULL, user_id TEXT NOT NULL, label TEXT NOT NULL, is_done INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, FOREIGN KEY(scholarship_id) REFERENCES scholarships(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS ai_results_cache (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, scholarship_id TEXT, result_type TEXT NOT NULL, result_data TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(user_id, scholarship_id, result_type));
         """

@@ -169,6 +169,39 @@ export type Database = {
           },
         ]
       }
+      essay_library_items: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          kind: string
+          tags: string[] | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          kind?: string
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       community_post_votes: {
         Row: {
           created_at: string

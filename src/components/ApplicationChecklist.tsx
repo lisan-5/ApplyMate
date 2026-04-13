@@ -20,9 +20,10 @@ interface ChecklistItem {
 
 interface Props {
   scholarship: Scholarship;
+  onItemsChange?: (items: ChecklistItem[]) => void;
 }
 
-export function ApplicationChecklist({ scholarship }: Props) {
+export function ApplicationChecklist({ scholarship, onItemsChange }: Props) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [items, setItems] = useState<ChecklistItem[]>([]);
@@ -39,6 +40,7 @@ export function ApplicationChecklist({ scholarship }: Props) {
       .eq("user_id", user.id)
       .order("position", { ascending: true });
     setItems((data as ChecklistItem[]) || []);
+    onItemsChange?.(((data as ChecklistItem[]) || []));
     setLoading(false);
   };
 
@@ -58,12 +60,20 @@ export function ApplicationChecklist({ scholarship }: Props) {
 
   const toggleItem = async (item: ChecklistItem) => {
     await api.from("application_checklist").update({ is_done: !item.is_done }).eq("id", item.id);
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, is_done: !i.is_done } : i)));
+    setItems((prev) => {
+      const next = prev.map((i) => (i.id === item.id ? { ...i, is_done: !i.is_done } : i));
+      onItemsChange?.(next);
+      return next;
+    });
   };
 
   const deleteItem = async (id: string) => {
     await api.from("application_checklist").delete().eq("id", id);
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    setItems((prev) => {
+      const next = prev.filter((i) => i.id !== id);
+      onItemsChange?.(next);
+      return next;
+    });
   };
 
   const suggestTasks = async () => {
