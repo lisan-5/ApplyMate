@@ -307,20 +307,18 @@ export default function Auth() {
                   required
                   className="h-12 rounded-xl border-border/50 bg-muted/50 pr-14 transition-all focus:border-primary/50 focus:bg-background"
                 />
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  size="icon"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute inset-y-0 right-0 my-auto flex h-12 w-12 items-center justify-center rounded-r-xl text-muted-foreground hover:text-foreground"
+                  className="absolute inset-y-0 right-0 my-auto flex h-12 w-12 items-center justify-center rounded-r-xl text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
                   ) : (
                     <Eye className="h-4 w-4" />
                   )}
-                </Button>
+                </button>
               </div>
             </div>
             {!isLogin && (
@@ -341,24 +339,22 @@ export default function Auth() {
                     required
                     className="h-12 rounded-xl border-border/50 bg-muted/50 pr-14 transition-all focus:border-primary/50 focus:bg-background"
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon"
                     aria-label={
                       showConfirmPassword
                         ? "Hide confirm password"
                         : "Show confirm password"
                     }
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 my-auto flex h-12 w-12 items-center justify-center rounded-r-xl text-muted-foreground hover:text-foreground"
+                    className="absolute inset-y-0 right-0 my-auto flex h-12 w-12 items-center justify-center rounded-r-xl text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="h-4 w-4" />
                     ) : (
                       <Eye className="h-4 w-4" />
                     )}
-                  </Button>
+                  </button>
                 </div>
               </div>
             )}
