@@ -1,23 +1,24 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
-import Auth from "./pages/Auth";
-import LandingPage from "./pages/LandingPage";
-import Dashboard from "./pages/Dashboard";
-import Scholarships from "./pages/Scholarships";
-import ScholarshipForm from "./pages/ScholarshipForm";
-import ScholarshipDetail from "./pages/ScholarshipDetail";
-import SharedWithMe from "./pages/SharedWithMe";
-import SharedView from "./pages/SharedView";
-import AdminDashboard from "./pages/AdminDashboard";
-import SettingsPage from "./pages/SettingsPage";
-import Community from "./pages/Community";
-import NotFound from "./pages/NotFound";
+const Auth = lazy(() => import("./pages/Auth"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Scholarships = lazy(() => import("./pages/Scholarships"));
+const ScholarshipForm = lazy(() => import("./pages/ScholarshipForm"));
+const ScholarshipDetail = lazy(() => import("./pages/ScholarshipDetail"));
+const SharedWithMe = lazy(() => import("./pages/SharedWithMe"));
+const SharedView = lazy(() => import("./pages/SharedView"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const Community = lazy(() => import("./pages/Community"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,14 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    </div>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -38,21 +47,23 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/shared/:token" element={<SharedView />} />
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/scholarships" element={<ProtectedRoute><Scholarships /></ProtectedRoute>} />
-              <Route path="/scholarships/new" element={<ProtectedRoute><ScholarshipForm /></ProtectedRoute>} />
-              <Route path="/scholarships/:id" element={<ProtectedRoute><ScholarshipDetail /></ProtectedRoute>} />
-              <Route path="/shared" element={<ProtectedRoute><SharedWithMe /></ProtectedRoute>} />
-              <Route path="/admin/users" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-              <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-              <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Suspense fallback={<AppLoader />}>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/shared/:token" element={<SharedView />} />
+                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/scholarships" element={<ProtectedRoute><Scholarships /></ProtectedRoute>} />
+                <Route path="/scholarships/new" element={<ProtectedRoute><ScholarshipForm /></ProtectedRoute>} />
+                <Route path="/scholarships/:id" element={<ProtectedRoute><ScholarshipDetail /></ProtectedRoute>} />
+                <Route path="/shared" element={<ProtectedRoute><SharedWithMe /></ProtectedRoute>} />
+                <Route path="/admin/users" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+                <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+                <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

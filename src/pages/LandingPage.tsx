@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { ApplyMateLogo } from "@/components/ApplyMateLogo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { api } from "@/integrations/backend/client";
 import { formatDistanceToNow } from "date-fns";
 
@@ -64,14 +64,34 @@ const heroMetrics = [
 
 export default function LandingPage() {
   const [posts, setPosts] = useState<PublicPost[]>([]);
-  const { scrollYProgress } = useScroll();
-  const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.95]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0.6]);
 
   useEffect(() => {
-    api
-      .rpc("get_recent_public_posts")
-      .then(({ data }) => setPosts((data as PublicPost[]) || []));
+    let cancelled = false;
+    const fetchPosts = async () => {
+      const { data } = await api.rpc("get_recent_public_posts");
+      if (!cancelled) {
+        setPosts((data as PublicPost[]) || []);
+      }
+    };
+
+    if ("requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(() => {
+        void fetchPosts();
+      });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void fetchPosts();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   return (
@@ -105,10 +125,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      <motion.section
-        style={{ scale: heroScale, opacity: heroOpacity }}
-        className="relative pt-32 sm:pt-44 pb-20 sm:pb-28 px-5 sm:px-8"
-      >
+      <motion.section className="relative pt-32 sm:pt-44 pb-20 sm:pb-28 px-5 sm:px-8">
         <div
           className="absolute inset-0 opacity-[0.05]"
           style={{

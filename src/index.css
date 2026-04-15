@@ -120,8 +120,7 @@
       radial-gradient(circle at 84% 16%, hsl(var(--gradient-end) / 0.14), transparent 30%),
       radial-gradient(circle at 50% 100%, hsl(var(--gradient-accent) / 0.1), transparent 42%),
       linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
-    background-attachment: fixed;
-    animation: ambient-shift 18s ease-in-out infinite alternate;
+    animation: ambient-shift 24s ease-in-out infinite alternate;
   }
 
   body::before {
@@ -292,11 +291,11 @@
   }
 
   .animate-soft-float {
-    animation: soft-float 7s ease-in-out infinite;
+    animation: soft-float 10s ease-in-out infinite;
   }
 
   .animate-soft-float-delayed {
-    animation: soft-float 8.5s ease-in-out infinite;
+    animation: soft-float 12s ease-in-out infinite;
     animation-delay: 1.2s;
   }
 
