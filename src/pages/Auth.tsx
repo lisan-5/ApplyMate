@@ -313,7 +313,7 @@ export default function Auth() {
                   size="icon"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute inset-y-0 right-1 my-auto flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -351,7 +351,7 @@ export default function Auth() {
                         : "Show confirm password"
                     }
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute inset-y-0 right-1 my-auto flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="h-4 w-4" />
